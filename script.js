@@ -67,47 +67,50 @@ function withinBoard(row, col) {
     return row >= 0 && row < SIZE && col >= 0 && col < SIZE;
 }
 
-function kingHasCapture(row, col) {
+function getCaptureMoves(row, col) {
     const piece = board[row][col];
-    if (!piece || !piece.king) return false;
-    const dirs = [[1,1],[1,-1],[-1,1],[-1,-1]];
+    if (!piece) return [];
+    const moves = [];
+    const dirs = piece.king
+        ? [[1, 1], [1, -1], [-1, 1], [-1, -1]]
+        : piece.color === 'white'
+            ? [[-1, 1], [-1, -1]]
+            : [[1, 1], [1, -1]];
     for (const [dr, dc] of dirs) {
-        let r = row + dr;
-        let c = col + dc;
-        while (withinBoard(r, c) && board[r][c] === null) {
-            r += dr;
-            c += dc;
+        let r1 = row + dr;
+        let c1 = col + dc;
+        if (!withinBoard(r1, c1)) continue;
+        if (piece.king) {
+            while (withinBoard(r1, c1) && board[r1][c1] === null) {
+                r1 += dr;
+                c1 += dc;
+            }
         }
-        if (withinBoard(r, c) && board[r][c] && board[r][c].color !== piece.color) {
-            let r2 = r + dr;
-            let c2 = c + dc;
-            while (withinBoard(r2, c2) && board[r2][c2] === null) {
-                return true;
+        if (withinBoard(r1, c1) && board[r1][c1] && board[r1][c1].color !== piece.color) {
+            let r2 = r1 + dr;
+            let c2 = c1 + dc;
+            if (piece.king) {
+                while (withinBoard(r2, c2) && board[r2][c2] === null) {
+                    moves.push({ row: r2, col: c2, capture: true, remove: { row: r1, col: c1 } });
+                    r2 += dr;
+                    c2 += dc;
+                }
+            } else {
+                if (withinBoard(r2, c2) && board[r2][c2] === null) {
+                    moves.push({ row: r2, col: c2, capture: true, remove: { row: r1, col: c1 } });
+                }
             }
         }
     }
-    return false;
+    return moves;
+}
+
+function kingHasCapture(row, col) {
+    return getCaptureMoves(row, col).length > 0;
 }
 
 function pieceHasCapture(row, col) {
-    const piece = board[row][col];
-    if (!piece) return false;
-    if (piece.king) {
-        return kingHasCapture(row, col);
-    }
-    const dirs = piece.color === 'white'
-        ? [[-1,1],[-1,-1]]
-        : [[1,1],[1,-1]];
-    for (const [dr, dc] of dirs) {
-        const r1 = row + dr;
-        const c1 = col + dc;
-        const r2 = row + dr * 2;
-        const c2 = col + dc * 2;
-        if (withinBoard(r2,c2) && board[r1][c1] && board[r1][c1].color !== piece.color && !board[r2][c2]) {
-            return true;
-        }
-    }
-    return false;
+    return getCaptureMoves(row, col).length > 0;
 }
 
 function hasAnyCapture(color) {
@@ -151,8 +154,11 @@ function getKingMoves(row, col, mustCapture) {
 function getValidMoves(row, col, mustCapture) {
     const piece = board[row][col];
     if (!piece) return [];
+    if (mustCapture) {
+        return getCaptureMoves(row, col);
+    }
     if (piece.king) {
-        return getKingMoves(row, col, mustCapture);
+        return getKingMoves(row, col, false);
     }
     const moves = [];
     const dirs = piece.color === 'white'
@@ -162,7 +168,7 @@ function getValidMoves(row, col, mustCapture) {
         const r1 = row + dr;
         const c1 = col + dc;
         if (!withinBoard(r1,c1)) continue;
-        if (board[r1][c1] === null && !mustCapture) {
+        if (board[r1][c1] === null) {
             moves.push({row:r1,col:c1,capture:false});
         } else if (board[r1][c1] && board[r1][c1].color !== piece.color) {
             const r2 = r1 + dr;
@@ -190,17 +196,45 @@ function hasAnyMoves(color) {
     return false;
 }
 
+function hasPieces(color) {
+    for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+            if (board[r][c] && board[r][c].color === color) return true;
+        }
+    }
+    return false;
+}
+
 function computeMoveEasy() {
     clearHighlights();
-    const moves = [];
     const mustCap = hasAnyCapture('black');
+    if (mustCap) {
+        for (let r = 0; r < SIZE; r++) {
+            for (let c = 0; c < SIZE; c++) {
+                const p = board[r][c];
+                if (p && p.color === 'black') {
+                    const caps = getCaptureMoves(r, c);
+                    if (caps.length > 0) {
+                        executeMove(r, c, caps[0]);
+                        while (currentPlayer === 'black' && selected) {
+                            executeMove(selected.row, selected.col, selected.moves[0]);
+                        }
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    const moves = [];
     for (let r = 0; r < SIZE; r++) {
         for (let c = 0; c < SIZE; c++) {
             const p = board[r][c];
             if (p && p.color === 'black') {
-                const mvs = getValidMoves(r, c, mustCap);
+                const mvs = getValidMoves(r, c, false);
                 for (const m of mvs) {
-                    moves.push({fromRow: r, fromCol: c, move: m});
+                    moves.push({ fromRow: r, fromCol: c, move: m });
                 }
             }
         }
@@ -208,11 +242,10 @@ function computeMoveEasy() {
     if (moves.length === 0) {
         return false;
     }
-    let choice = moves[Math.floor(Math.random() * moves.length)];
+    const choice = moves[Math.floor(Math.random() * moves.length)];
     executeMove(choice.fromRow, choice.fromCol, choice.move);
     while (currentPlayer === 'black' && selected) {
-        const next = selected.moves[Math.floor(Math.random() * selected.moves.length)];
-        executeMove(selected.row, selected.col, next);
+        executeMove(selected.row, selected.col, selected.moves[0]);
     }
     return true;
 }
@@ -238,11 +271,56 @@ function evaluateBoard(bd) {
             }
         }
     }
+    // valor adicional por capturas inmediatas disponibles
+    for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+            const p = bd[r][c];
+            if (p) {
+                const caps = boardGetCaptureMoves(bd, r, c).length * 2;
+                if (p.color === 'black') score += caps; else score -= caps;
+            }
+        }
+    }
     return score;
 }
 
 function boardWithin(row, col) {
     return row >= 0 && row < SIZE && col >= 0 && col < SIZE;
+}
+
+function boardGetCaptureMoves(bd, row, col) {
+    const piece = bd[row][col];
+    if (!piece) return [];
+    const moves = [];
+    const dirs = piece.king ? [[1,1],[1,-1],[-1,1],[-1,-1]]
+                            : (piece.color === 'white' ? [[-1,1],[-1,-1]] : [[1,1],[1,-1]]);
+    for (const [dr, dc] of dirs) {
+        let r1 = row + dr;
+        let c1 = col + dc;
+        if (!boardWithin(r1, c1)) continue;
+        if (piece.king) {
+            while (boardWithin(r1, c1) && bd[r1][c1] === null) {
+                r1 += dr;
+                c1 += dc;
+            }
+        }
+        if (boardWithin(r1, c1) && bd[r1][c1] && bd[r1][c1].color !== piece.color) {
+            let r2 = r1 + dr;
+            let c2 = c1 + dc;
+            if (piece.king) {
+                while (boardWithin(r2, c2) && bd[r2][c2] === null) {
+                    moves.push({row:r2, col:c2, capture:true, remove:{row:r1, col:c1}});
+                    r2 += dr;
+                    c2 += dc;
+                }
+            } else {
+                if (boardWithin(r2, c2) && bd[r2][c2] === null) {
+                    moves.push({row:r2, col:c2, capture:true, remove:{row:r1, col:c1}});
+                }
+            }
+        }
+    }
+    return moves;
 }
 
 function boardGetValidMoves(bd, row, col, mustCapture) {
@@ -407,7 +485,7 @@ function computeMoveMedium() {
 }
 
 function makeAIMove() {
-    if (!hasAnyMoves('black')) {
+    if (!hasPieces('black') || !hasAnyMoves('black')) {
         alert('Victoria del jugador');
         currentPlayer = 'white';
         return;
@@ -420,7 +498,7 @@ function makeAIMove() {
         computeMoveHard();
     }
     renderBoard();
-    if (!hasAnyMoves('white')) {
+    if (!hasPieces('white') || !hasAnyMoves('white')) {
         alert('Victoria de la IA');
     }
 }
