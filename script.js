@@ -35,9 +35,9 @@ function initBoard() {
             let piece = null;
             if ((row + col) % 2 === 1) {
                 if (row < 3) {
-                    piece = { color: 'black', king: false };
+                    piece = { color: 'black', isKing: false };
                 } else if (row > 4) {
-                    piece = { color: 'white', king: false };
+                    piece = { color: 'white', isKing: false };
                 }
             }
             board[row][col] = piece;
@@ -56,7 +56,7 @@ function renderBoard() {
             if (piece) {
                 const p = document.createElement('div');
                 p.classList.add('piece', piece.color);
-                if (piece.king) p.classList.add('king');
+                if (piece.isKing) p.classList.add('king');
                 square.appendChild(p);
             }
         }
@@ -67,9 +67,16 @@ function withinBoard(row, col) {
     return row >= 0 && row < SIZE && col >= 0 && col < SIZE;
 }
 
+function promoteToKing(piece, element) {
+    piece.isKing = true;
+    if (element) {
+        element.classList.add('king');
+    }
+}
+
 function kingHasCapture(row, col) {
     const piece = board[row][col];
-    if (!piece || !piece.king) return false;
+    if (!piece || !piece.isKing) return false;
     const dirs = [[1,1],[1,-1],[-1,1],[-1,-1]];
     for (const [dr, dc] of dirs) {
         let r = row + dr;
@@ -92,7 +99,7 @@ function kingHasCapture(row, col) {
 function pieceHasCapture(row, col) {
     const piece = board[row][col];
     if (!piece) return false;
-    if (piece.king) {
+    if (piece.isKing) {
         return kingHasCapture(row, col);
     }
     const dirs = piece.color === 'white'
@@ -151,7 +158,7 @@ function getKingMoves(row, col, mustCapture) {
 function getValidMoves(row, col, mustCapture) {
     const piece = board[row][col];
     if (!piece) return [];
-    if (piece.king) {
+    if (piece.isKing) {
         return getKingMoves(row, col, mustCapture);
     }
     const moves = [];
@@ -218,7 +225,7 @@ function computeMoveEasy() {
 }
 
 function cloneBoard(src) {
-    return src.map(row => row.map(p => p ? {color: p.color, king: p.king} : null));
+    return src.map(row => row.map(p => p ? {color: p.color, isKing: p.isKing} : null));
 }
 
 function evaluateBoard(bd) {
@@ -227,12 +234,13 @@ function evaluateBoard(bd) {
         for (let c = 0; c < SIZE; c++) {
             const p = bd[r][c];
             if (p) {
-                let val = p.king ? 3 : 1;
                 if (p.color === 'black') {
-                    score += val;
+                    score += 1;
+                    if (p.isKing) score += 3;
                     if (r >= 2 && r <= 5 && c >= 2 && c <= 5) score += 0.5;
                 } else {
-                    score -= val;
+                    score -= 1;
+                    if (p.isKing) score -= 3;
                     if (r >= 2 && r <= 5 && c >= 2 && c <= 5) score -= 0.5;
                 }
             }
@@ -248,7 +256,7 @@ function boardWithin(row, col) {
 function boardGetValidMoves(bd, row, col, mustCapture) {
     const piece = bd[row][col];
     if (!piece) return [];
-    if (piece.king) {
+    if (piece.isKing) {
         const moves = [];
         const dirs = [[1,1],[1,-1],[-1,1],[-1,-1]];
         for (const [dr, dc] of dirs) {
@@ -293,13 +301,13 @@ function boardHasAnyCapture(bd, color) {
         for (let c = 0; c < SIZE; c++) {
             const p = bd[r][c];
             if (p && p.color === color) {
-                const dirs = p.king ? [[1,1],[1,-1],[-1,1],[-1,-1]]
+                const dirs = p.isKing ? [[1,1],[1,-1],[-1,1],[-1,-1]]
                                     : (p.color === 'white' ? [[-1,1],[-1,-1]] : [[1,1],[1,-1]]);
                 for (const [dr, dc] of dirs) {
                     let r1 = r + dr;
                     let c1 = c + dc;
                     if (!boardWithin(r1,c1)) continue;
-                    if (p.king) {
+                    if (p.isKing) {
                         while (boardWithin(r1,c1) && bd[r1][c1] === null) {
                             r1 += dr; c1 += dc;
                         }
@@ -343,7 +351,7 @@ function applyMove(bd, obj) {
     }
     if ((piece.color === 'white' && obj.move.row === 0) ||
         (piece.color === 'black' && obj.move.row === SIZE-1)) {
-        piece.king = true;
+        piece.isKing = true;
     }
     return newB;
 }
@@ -482,8 +490,7 @@ function executeMove(fromRow, fromCol, move) {
     }
 
     if ((piece.color === 'white' && move.row === 0) || (piece.color === 'black' && move.row === SIZE-1)) {
-        piece.king = true;
-        if (pieceElement) pieceElement.classList.add('king');
+        promoteToKing(piece, pieceElement);
     }
 
     clearHighlights();
