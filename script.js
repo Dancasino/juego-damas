@@ -3,6 +3,7 @@ const SIZE = 8;
 let board = [];
 let squares = [];
 let selected = null;
+let selectedPiece = null; // DOM element of the currently selected piece
 let currentPlayer = 'white';
 
 function initBoard() {
@@ -181,7 +182,7 @@ function onSquareClick(e) {
     const row = parseInt(this.dataset.row, 10);
     const col = parseInt(this.dataset.col, 10);
     const piece = board[row][col];
-    if (selected && selected.moves) {
+    if (this.classList.contains('highlight') && selected && selectedPiece) {
         const move = selected.moves.find(m => m.row === row && m.col === col);
         if (move) {
             executeMove(selected.row, selected.col, move);
@@ -193,12 +194,14 @@ function onSquareClick(e) {
         const mustCap = hasAnyCapture(currentPlayer);
         const moves = getValidMoves(row, col, mustCap);
         selected = {row, col, moves};
+        selectedPiece = this.querySelector('.piece');
         clearHighlights();
         for (const m of moves) {
             squares[m.row][m.col].classList.add('highlight');
         }
     } else {
         selected = null;
+        selectedPiece = null;
         clearHighlights();
     }
 }
@@ -211,14 +214,28 @@ function executeMove(fromRow, fromCol, move) {
         board[move.remove.row][move.remove.col] = null;
     }
 
-    if ((piece.color === 'white' && move.row === 0) || (piece.color === 'black' && move.row === SIZE-1)) {
-        piece.king = true;
+    // Move the DOM element for the piece to its new square
+    const originSquare = squares[fromRow][fromCol];
+    const targetSquare = squares[move.row][move.col];
+    const pieceElement = selectedPiece || originSquare.querySelector('.piece');
+    if (pieceElement) {
+        targetSquare.appendChild(pieceElement);
+    }
+    if (move.capture) {
+        const removedEl = squares[move.remove.row][move.remove.col].querySelector('.piece');
+        if (removedEl) removedEl.remove();
     }
 
-    renderBoard();
+    if ((piece.color === 'white' && move.row === 0) || (piece.color === 'black' && move.row === SIZE-1)) {
+        piece.king = true;
+        if (pieceElement) pieceElement.classList.add('king');
+    }
+
+    clearHighlights();
 
     if (move.capture && pieceHasCapture(move.row, move.col)) {
         selected = {row: move.row, col: move.col, moves: getValidMoves(move.row, move.col, true)};
+        selectedPiece = pieceElement;
         for (const m of selected.moves) {
             squares[m.row][m.col].classList.add('highlight');
         }
@@ -226,6 +243,7 @@ function executeMove(fromRow, fromCol, move) {
     }
 
     selected = null;
+    selectedPiece = null;
     currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
 }
 
