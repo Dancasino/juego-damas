@@ -61,14 +61,37 @@ function withinBoard(row, col) {
     return row >= 0 && row < SIZE && col >= 0 && col < SIZE;
 }
 
+function kingHasCapture(row, col) {
+    const piece = board[row][col];
+    if (!piece || !piece.king) return false;
+    const dirs = [[1,1],[1,-1],[-1,1],[-1,-1]];
+    for (const [dr, dc] of dirs) {
+        let r = row + dr;
+        let c = col + dc;
+        while (withinBoard(r, c) && board[r][c] === null) {
+            r += dr;
+            c += dc;
+        }
+        if (withinBoard(r, c) && board[r][c] && board[r][c].color !== piece.color) {
+            let r2 = r + dr;
+            let c2 = c + dc;
+            while (withinBoard(r2, c2) && board[r2][c2] === null) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 function pieceHasCapture(row, col) {
     const piece = board[row][col];
     if (!piece) return false;
-    const dirs = piece.king
-        ? [[1,1],[1,-1],[-1,1],[-1,-1]]
-        : piece.color === 'white'
-            ? [[-1,1],[-1,-1]]
-            : [[1,1],[1,-1]];
+    if (piece.king) {
+        return kingHasCapture(row, col);
+    }
+    const dirs = piece.color === 'white'
+        ? [[-1,1],[-1,-1]]
+        : [[1,1],[1,-1]];
     for (const [dr, dc] of dirs) {
         const r1 = row + dr;
         const c1 = col + dc;
@@ -93,13 +116,40 @@ function hasAnyCapture(color) {
     return false;
 }
 
+function getKingMoves(row, col, mustCapture) {
+    const moves = [];
+    const dirs = [[1,1],[1,-1],[-1,1],[-1,-1]];
+    for (const [dr, dc] of dirs) {
+        let r = row + dr;
+        let c = col + dc;
+        while (withinBoard(r, c) && board[r][c] === null) {
+            if (!mustCapture) {
+                moves.push({row:r, col:c, capture:false});
+            }
+            r += dr;
+            c += dc;
+        }
+        if (withinBoard(r, c) && board[r][c] && board[r][c].color !== board[row][col].color) {
+            let r2 = r + dr;
+            let c2 = c + dc;
+            while (withinBoard(r2, c2) && board[r2][c2] === null) {
+                moves.push({row:r2, col:c2, capture:true, remove:{row:r, col:c}});
+                r2 += dr;
+                c2 += dc;
+            }
+        }
+    }
+    return moves;
+}
+
 function getValidMoves(row, col, mustCapture) {
     const piece = board[row][col];
     if (!piece) return [];
+    if (piece.king) {
+        return getKingMoves(row, col, mustCapture);
+    }
     const moves = [];
-    const dirs = piece.king
-        ? [[1,1],[1,-1],[-1,1],[-1,-1]]
-        : piece.color === 'white'
+    const dirs = piece.color === 'white'
             ? [[-1,1],[-1,-1]]
             : [[1,1],[1,-1]];
     for (const [dr, dc] of dirs) {
