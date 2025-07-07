@@ -9,6 +9,16 @@ function createBoard() {
                 square.classList.add('light');
             } else {
                 square.classList.add('dark');
+
+                if (row < 3) {
+                    const piece = document.createElement('div');
+                    piece.classList.add('piece', 'black');
+                    square.appendChild(piece);
+                } else if (row > 4) {
+                    const piece = document.createElement('div');
+                    piece.classList.add('piece', 'white');
+                    square.appendChild(piece);
+                }
             }
             boardElement.appendChild(square);
         }
