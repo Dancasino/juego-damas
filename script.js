@@ -1,4 +1,9 @@
 const boardElement = document.getElementById('board');
+const difficultySelect = document.getElementById('difficulty');
+let difficulty = difficultySelect.value;
+difficultySelect.addEventListener('change', e => {
+    difficulty = e.target.value;
+});
 const SIZE = 8;
 let board = [];
 let squares = [];
@@ -170,6 +175,256 @@ function getValidMoves(row, col, mustCapture) {
     return moves;
 }
 
+function hasAnyMoves(color) {
+    const mustCap = hasAnyCapture(color);
+    for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+            const p = board[r][c];
+            if (p && p.color === color) {
+                if (getValidMoves(r, c, mustCap).length > 0) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function computeMoveEasy() {
+    clearHighlights();
+    const moves = [];
+    const mustCap = hasAnyCapture('black');
+    for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+            const p = board[r][c];
+            if (p && p.color === 'black') {
+                const mvs = getValidMoves(r, c, mustCap);
+                for (const m of mvs) {
+                    moves.push({fromRow: r, fromCol: c, move: m});
+                }
+            }
+        }
+    }
+    if (moves.length === 0) {
+        return false;
+    }
+    let choice = moves[Math.floor(Math.random() * moves.length)];
+    executeMove(choice.fromRow, choice.fromCol, choice.move);
+    while (currentPlayer === 'black' && selected) {
+        const next = selected.moves[Math.floor(Math.random() * selected.moves.length)];
+        executeMove(selected.row, selected.col, next);
+    }
+    return true;
+}
+
+function cloneBoard(src) {
+    return src.map(row => row.map(p => p ? {color: p.color, king: p.king} : null));
+}
+
+function evaluateBoard(bd) {
+    let score = 0;
+    for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+            const p = bd[r][c];
+            if (p) {
+                let val = p.king ? 3 : 1;
+                if (p.color === 'black') {
+                    score += val;
+                    if (r >= 2 && r <= 5 && c >= 2 && c <= 5) score += 0.5;
+                } else {
+                    score -= val;
+                    if (r >= 2 && r <= 5 && c >= 2 && c <= 5) score -= 0.5;
+                }
+            }
+        }
+    }
+    return score;
+}
+
+function boardWithin(row, col) {
+    return row >= 0 && row < SIZE && col >= 0 && col < SIZE;
+}
+
+function boardGetValidMoves(bd, row, col, mustCapture) {
+    const piece = bd[row][col];
+    if (!piece) return [];
+    if (piece.king) {
+        const moves = [];
+        const dirs = [[1,1],[1,-1],[-1,1],[-1,-1]];
+        for (const [dr, dc] of dirs) {
+            let r = row + dr;
+            let c = col + dc;
+            while (boardWithin(r, c) && bd[r][c] === null) {
+                if (!mustCapture) moves.push({row:r,col:c,capture:false});
+                r += dr; c += dc;
+            }
+            if (boardWithin(r,c) && bd[r][c] && bd[r][c].color !== piece.color) {
+                let r2 = r + dr;
+                let c2 = c + dc;
+                while (boardWithin(r2,c2) && bd[r2][c2] === null) {
+                    moves.push({row:r2,col:c2,capture:true,remove:{row:r,col:c}});
+                    r2 += dr; c2 += dc;
+                }
+            }
+        }
+        return moves;
+    }
+    const moves = [];
+    const dirs = piece.color === 'white' ? [[-1,1],[-1,-1]] : [[1,1],[1,-1]];
+    for (const [dr, dc] of dirs) {
+        const r1 = row + dr;
+        const c1 = col + dc;
+        if (!boardWithin(r1,c1)) continue;
+        if (bd[r1][c1] === null && !mustCapture) {
+            moves.push({row:r1,col:c1,capture:false});
+        } else if (bd[r1][c1] && bd[r1][c1].color !== piece.color) {
+            const r2 = r1 + dr;
+            const c2 = c1 + dc;
+            if (boardWithin(r2,c2) && bd[r2][c2] === null) {
+                moves.push({row:r2,col:c2,capture:true,remove:{row:r1,col:c1}});
+            }
+        }
+    }
+    return moves;
+}
+
+function boardHasAnyCapture(bd, color) {
+    for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+            const p = bd[r][c];
+            if (p && p.color === color) {
+                const dirs = p.king ? [[1,1],[1,-1],[-1,1],[-1,-1]]
+                                    : (p.color === 'white' ? [[-1,1],[-1,-1]] : [[1,1],[1,-1]]);
+                for (const [dr, dc] of dirs) {
+                    let r1 = r + dr;
+                    let c1 = c + dc;
+                    if (!boardWithin(r1,c1)) continue;
+                    if (p.king) {
+                        while (boardWithin(r1,c1) && bd[r1][c1] === null) {
+                            r1 += dr; c1 += dc;
+                        }
+                    }
+                    const r2 = r1 + dr;
+                    const c2 = c1 + dc;
+                    if (boardWithin(r2,c2) && bd[r1] && bd[r1][c1] && bd[r1][c1].color !== p.color && bd[r2][c2] === null) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function generateMoves(bd, color) {
+    const moves = [];
+    const mustCap = boardHasAnyCapture(bd, color);
+    for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+            const p = bd[r][c];
+            if (p && p.color === color) {
+                const mv = boardGetValidMoves(bd, r, c, mustCap);
+                for (const m of mv) {
+                    moves.push({fromRow:r, fromCol:c, move:m});
+                }
+            }
+        }
+    }
+    return moves;
+}
+
+function applyMove(bd, obj) {
+    const newB = cloneBoard(bd);
+    const piece = newB[obj.fromRow][obj.fromCol];
+    newB[obj.fromRow][obj.fromCol] = null;
+    newB[obj.move.row][obj.move.col] = piece;
+    if (obj.move.capture) {
+        newB[obj.move.remove.row][obj.move.remove.col] = null;
+    }
+    if ((piece.color === 'white' && obj.move.row === 0) ||
+        (piece.color === 'black' && obj.move.row === SIZE-1)) {
+        piece.king = true;
+    }
+    return newB;
+}
+
+function minimax(bd, depth, alpha, beta, maximizing) {
+    if (depth === 0) {
+        return evaluateBoard(bd);
+    }
+    const color = maximizing ? 'black' : 'white';
+    const moves = generateMoves(bd, color);
+    if (moves.length === 0) {
+        return maximizing ? -Infinity : Infinity;
+    }
+    if (maximizing) {
+        let maxEval = -Infinity;
+        for (const mv of moves) {
+            const eval = minimax(applyMove(bd, mv), depth - 1, alpha, beta, false);
+            if (eval > maxEval) maxEval = eval;
+            alpha = Math.max(alpha, eval);
+            if (beta <= alpha) break;
+        }
+        return maxEval;
+    } else {
+        let minEval = Infinity;
+        for (const mv of moves) {
+            const eval = minimax(applyMove(bd, mv), depth - 1, alpha, beta, true);
+            if (eval < minEval) minEval = eval;
+            beta = Math.min(beta, eval);
+            if (beta <= alpha) break;
+        }
+        return minEval;
+    }
+}
+
+function computeMoveHard() {
+    clearHighlights();
+    const moves = generateMoves(board, 'black');
+    if (moves.length === 0) {
+        return false;
+    }
+    let bestScore = -Infinity;
+    let bestMove = moves[0];
+    for (const mv of moves) {
+        const score = minimax(applyMove(board, mv), 5, -Infinity, Infinity, false);
+        if (score > bestScore) {
+            bestScore = score;
+            bestMove = mv;
+        }
+    }
+    executeMove(bestMove.fromRow, bestMove.fromCol, bestMove.move);
+    while (currentPlayer === 'black' && selected) {
+        const nextMoves = selected.moves;
+        const mv = nextMoves[Math.floor(Math.random() * nextMoves.length)];
+        executeMove(selected.row, selected.col, mv);
+    }
+    return true;
+}
+
+function computeMoveMedium() {
+    return Math.random() < 0.5 ? computeMoveEasy() : computeMoveHard();
+}
+
+function makeAIMove() {
+    if (!hasAnyMoves('black')) {
+        alert('Victoria del jugador');
+        currentPlayer = 'white';
+        return;
+    }
+    if (difficulty === 'easy') {
+        computeMoveEasy();
+    } else if (difficulty === 'medium') {
+        computeMoveMedium();
+    } else {
+        computeMoveHard();
+    }
+    renderBoard();
+    if (!hasAnyMoves('white')) {
+        alert('Victoria de la IA');
+    }
+}
+
 function clearHighlights() {
     for (let row = 0; row < SIZE; row++) {
         for (let col = 0; col < SIZE; col++) {
@@ -245,6 +500,11 @@ function executeMove(fromRow, fromCol, move) {
     selected = null;
     selectedPiece = null;
     currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
+    if (currentPlayer === 'black') {
+        makeAIMove();
+    }
 }
 
-document.addEventListener('DOMContentLoaded', initBoard);
+document.addEventListener('DOMContentLoaded', () => {
+    initBoard();
+});
